@@ -43,7 +43,13 @@ class PointCloudLoader:
 
     # get file path, create file parser instance
     path = self.objectFrameFilePath(obj)
+
+    if obj.pointCloudLoaderConfig.currentFrameLoaded == path:
+      print("Current point cloud frame already loaded, aborting")
+      return
+
     file = PointCloudFrameFile(path=path, skip=obj.pointCloudLoaderConfig.skipPoints)
+    
     # create mesh generator instance, feed it the points form the file parser
     pcofl = PointCloudObjectFrameLoader(obj, file.get_points(), scene=self.scene)
     
@@ -56,6 +62,10 @@ class PointCloudLoader:
     # "skin" the mesh if the skin flag is enabled
     if obj.pointCloudLoaderConfig.skin == True:
       self.skinObject(pcofl.getContainerObject())
+
+    # done, store the path to the point-cloud-data file in the object's config, so
+    # we know we don't have to load it again if the same file is specified
+    obj.pointCloudLoaderConfig.currentFrameLoaded = path
 
   def skinObject(self, obj):
     print("Skinning mesh")
@@ -307,6 +317,7 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
     cls.numFiles = bpy.props.IntProperty(name="Number of files", default=100, soft_min=0)
     cls.frameRatio = bpy.props.FloatProperty(name="Frame ratio", default=1.0, soft_min=0.0, description="Point cloud frame / blender frame ratio")
     cls.skin = bpy.props.BoolProperty(name="skin", default=False, description="Skin point cloud mesh using, Point Cloud Skinner addon")
+    cls.currentFrameLoaded = bpy.props.StringProperty(name="Currently Loaded Frame File", default="")
 
   @classmethod
   def unregister(cls):
