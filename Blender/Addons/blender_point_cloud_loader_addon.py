@@ -328,9 +328,9 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
 # Blender addon stuff, (un-)registerers and events handlers
 @persistent
 def frameHandler(scene):
-  print("-- PointCloudLoader frame udpate START --")
+  print("-- PointCloudLoader frame update START --")
   PointCloudLoader(scene=scene).loadFrame()
-  print("-- PointCloudLoader frame udpate END --")
+  print("-- PointCloudLoader frame update END --")
 
 def register():
   bpy.utils.register_module(__name__)
