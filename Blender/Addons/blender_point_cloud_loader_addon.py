@@ -46,8 +46,12 @@ class PointCloudLoader:
     file = PointCloudFrameFile(path=path, skip=obj.pointCloudLoaderConfig.skipPoints)
     # create mesh generator instance, feed it the points form the file parser
     pcofl = PointCloudObjectFrameLoader(obj, file.get_points(), scene=self.scene)
-    pcofl.removeExisting()
+    
+    if obj.pointCloudLoaderConfig.skin == True:
+      pcofl.removeExisting()
+      
     # pcofl.removeFaces()
+
     pcofl.createPoints()
     # "skin" the mesh if the skin flag is enabled
     if obj.pointCloudLoaderConfig.skin == True:
