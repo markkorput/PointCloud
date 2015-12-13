@@ -18,20 +18,15 @@ from bpy.app.handlers import persistent
 import bmesh
 
 class PointCloudLoader:
-  def __init__(self, scene=None, logger=None):
+  def __init__(self, scene=None):
     self.scene=scene
-    self.logger = logger
-    if self.logger == None:
-      self.logger = logging # default logging object from the imported logging module
-
-  def getScene(self):
-    if self.scene:
-      return self.scene
-    return bpy.context.scene
+    
+    if self.scene == None: # default to currently active scene
+      self.scene = bpy.context.scene 
 
   # gives all objects in the scene for who the pointCloudLoaderConfig is enabled (through the panel)
   def enabledObjects(self):
-    return [obj for obj in self.getScene().objects if obj.pointCloudLoaderConfig.enabled == True]
+    return [obj for obj in self.scene.objects if obj.pointCloudLoaderConfig.enabled == True]
 
   # loads the current frame for all point-cloud-enabled objects in the scene
   def loadFrame(self):
@@ -46,27 +41,39 @@ class PointCloudLoader:
   def loadObjectFrame(self, obj):
     print("Loading point cloud for object: " + obj.name)
 
-    # get the path to the data file for the point cloud of this object for this frame
+    # get file path, create file parser instance
     path = self.objectFrameFilePath(obj)
     file = PointCloudFrameFile(path=path, skip=obj.pointCloudLoaderConfig.skipPoints)
-
-    # determine current data file, check if this data file isn't currently loaded already for this object
-    # then find or create the point cloud child-object
-    # create the points
-    # self.createPoints(obj, file.get_points())
-    pcofl = PointCloudObjectFrameLoader(obj, file.get_points(), scene=self.getScene())
+    # create mesh generator instance, feed it the points form the file parser
+    pcofl = PointCloudObjectFrameLoader(obj, file.get_points(), scene=self.scene)
+    pcofl.removeExisting()
+    # pcofl.removeFaces()
     pcofl.createPoints()
+    # "skin" the mesh if the skin flag is enabled
+    if obj.pointCloudLoaderConfig.skin == True:
+      self.skinObject(pcofl.getContainerObject())
+
+  def skinObject(self, obj):
+    print("Skinning mesh")
+    if hasattr(self.scene, 'CONFIG_PointCloudSkinner') != True:
+      print("Can't skin point cloud mesh; scene doesn't have CONFIG_PointCloudSkinner attribute. ")
+      print("Please install and enable Point Cloud Skinner addon. See http://sourceforge.net/projects/pointcloudskin/")
+      return
+
+    originalSkinObject = self.scene.CONFIG_PointCloudSkinner.target_object # remember for later restore
+    self.scene.CONFIG_PointCloudSkinner.target_object = obj.name
+    bpy.ops.scene.point_cloud_skinner_skin()
+    self.scene.CONFIG_PointCloudSkinner.target_object = originalSkinObject # restore
 
   # returns the file path of the file that contains
   # the point-cloud data for the current frame
   def objectFrameFilePath(self, obj):
-      currentFrame = self.getScene().frame_current
+      currentFrame = self.scene.frame_current
       mod = int(currentFrame*obj.pointCloudLoaderConfig.frameRatio) % obj.pointCloudLoaderConfig.numFiles
       path = obj.pointCloudLoaderConfig.fileName % mod
       if path.startswith("/"):
         return path
       return bpy.path.abspath("//"+path)
-
 # end of class PointCloudLoader
 
 
@@ -140,6 +147,38 @@ class PointCloudObjectFrameLoader:
     bpy.ops.object.editmode_toggle() # back to OBJECT mode
     self.scene.objects.active = originalActive
 
+  def removeExisting(self):
+    print("Removing existing point cloud mesh and container object")
+    containerObject = self._existingContainerObject()
+    if containerObject != None:
+      self.scene.objects.unlink(containerObject)
+      bpy.data.objects.remove(containerObject)
+
+  # the removeFaces function isn't working... can't figure it out
+  def removeFaces(self):
+    containerObj = self.getContainerObject()
+    mesh = self.getMesh()
+    print("Removing all faces from mesh: "+mesh.name)
+    
+    originalActive = self.scene.objects.active # remember currently active object, so we can restore at the end of this function
+    self.scene.objects.active = containerObj # make specified object the active object
+
+    
+    # Get a BMesh representation
+    # bm = bmesh.from_edit_mesh(mesh)
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+
+    bpy.ops.object.mode_set(mode="EDIT")  # endter edit mode just for a deselect all
+    bpy.ops.mesh.select_all() #action='TOGGLE')
+    containerObj.select = True
+    bpy.ops.mesh.delete() #type='FACE')
+    # bmesh.update_edit_mesh(mesh, True)
+    bpy.ops.object.editmode_toggle() # back to OBJECT mode
+    bm.to_mesh(mesh)
+    bm.free()
+    self.scene.objects.active = originalActive
+
   def createPoints(self):
     print("Creating point cloud for object: "+self.obj.name)
     # find existing mesh or creates a new one (inside a "pointcloud" container object)
@@ -164,6 +203,7 @@ class PointCloudObjectFrameLoader:
 
     self.scene.update()
 # end of class PointCloudObjectFrameLoader
+
 
 # A class that represents one file (frame) of piont cloud data,
 # this class takes care of parsing the file's data into python data (arrays)
@@ -243,42 +283,47 @@ class PointCloudLoaderPanel(bpy.types.Panel):
         row.prop(config, "numFiles")
         row = layout.row()
         row.prop(config, "frameRatio")
+        row = layout.row()
+        row.prop(config, "skin")
 # end of class PointCloudLoaderPanel
 
 
 class PointCloudLoaderConfig(bpy.types.PropertyGroup):
-    @classmethod
-    def register(cls):
-        bpy.types.Object.pointCloudLoaderConfig = bpy.props.PointerProperty(
-            name="Point Cloud Loader Config",
-            description="Object-specific Point Cloud Loader properties",
-            type=cls)
-     
-        # Add in the properties
-        cls.enabled = bpy.props.BoolProperty(name="enabled", default=False, description="Enable point cloud for this object")
-        cls.fileName = bpy.props.StringProperty(name="Data Files", default="pointCloudData/frame%d.txt")
-        cls.skipPoints = bpy.props.IntProperty(name="Skip Points", default=0, soft_min=0)
-        cls.numFiles = bpy.props.IntProperty(name="Number of files", default=100, soft_min=0)
-        cls.frameRatio = bpy.props.FloatProperty(name="Frame ratio", default=1.0, soft_min=0.0, description="Point cloud frame / blender frame ratio")
+  @classmethod
+  def register(cls):
+    bpy.types.Object.pointCloudLoaderConfig = bpy.props.PointerProperty(
+      name="Point Cloud Loader Config",
+      description="Object-specific Point Cloud Loader properties",
+      type=cls)
+   
+    # Add in the properties
+    cls.enabled = bpy.props.BoolProperty(name="enabled", default=False, description="Enable point cloud for this object")
+    cls.fileName = bpy.props.StringProperty(name="Data Files", default="pointCloudData/frame%d.txt")
+    cls.skipPoints = bpy.props.IntProperty(name="Skip Points", default=0, soft_min=0)
+    cls.numFiles = bpy.props.IntProperty(name="Number of files", default=100, soft_min=0)
+    cls.frameRatio = bpy.props.FloatProperty(name="Frame ratio", default=1.0, soft_min=0.0, description="Point cloud frame / blender frame ratio")
+    cls.skin = bpy.props.BoolProperty(name="skin", default=False, description="Skin point cloud mesh using, Point Cloud Skinner addon")
 
-    @classmethod
-    def unregister(cls):
-        del bpy.types.Object.pointCloudLoaderConfig
+  @classmethod
+  def unregister(cls):
+    del bpy.types.Object.pointCloudLoaderConfig
 # end of class PointCloudLoaderConfig
 
 
 # Blender addon stuff, (un-)registerers and events handlers
 @persistent
 def frameHandler(scene):
-    PointCloudLoader(scene=scene).loadFrame()
+  print("-- PointCloudLoader frame udpate START --")
+  PointCloudLoader(scene=scene).loadFrame()
+  print("-- PointCloudLoader frame udpate END --")
 
 def register():
-    bpy.utils.register_module(__name__)
-    bpy.app.handlers.frame_change_pre.append(frameHandler)
+  bpy.utils.register_module(__name__)
+  bpy.app.handlers.frame_change_pre.append(frameHandler)
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-    bpy.app.handlers.frame_change_pre.remove(frameHandler)
+  bpy.utils.unregister_module(__name__)
+  bpy.app.handlers.frame_change_pre.remove(frameHandler)
 
 if __name__ == "__main__":
-    register()
+  register()
