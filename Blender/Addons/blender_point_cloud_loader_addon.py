@@ -62,7 +62,11 @@ class PointCloudLoader:
   def objectFrameFilePath(self, obj):
       currentFrame = self.getScene().frame_current
       mod = int(currentFrame*obj.pointCloudLoaderConfig.frameRatio) % obj.pointCloudLoaderConfig.numFiles
-      return obj.pointCloudLoaderConfig.fileName % mod
+      path = obj.pointCloudLoaderConfig.fileName % mod
+      if path.startswith("/"):
+        return path
+      return bpy.path.abspath("//"+path)
+
 # end of class PointCloudLoader
 
 
