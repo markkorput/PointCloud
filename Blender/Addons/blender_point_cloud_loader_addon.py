@@ -117,22 +117,27 @@ class PointCloudObjectFrameLoader:
   def getContainerObject(self):
     return self._existingContainerObject() or self._createContainerObject()
 
+  # this function does a lot of trickery to get some vertices removed from the pointcloudmesh
+  # it's emabrassing how convoluted blender logic is; it's MVC gone all wrong and reverse
   def _removeVertices(self, containerObj, count):
     print("Removing {0} vertices from pointcloud mesh".format(count))
     mesh = containerObj.data
 
-    # fkin blender, man
     originalActive = self.scene.objects.active # remember currently active object, so we can restore at the end of this function
     self.scene.objects.active = containerObj # make specified object the active object
-    bpy.ops.object.mode_set(mode="EDIT")  # endter edit mode
-    bm = bmesh.from_edit_mesh(mesh) # start editing the mesh
 
-    # just remove the first <count> vertices
-    for i in range(count):
-      bm.verts.remove(bm.verts[0])
+    bpy.ops.object.mode_set(mode="EDIT")  # endter edit mode just for a deselect all
+    bpy.ops.mesh.select_all(action = 'DESELECT')
+    bpy.ops.object.mode_set(mode="OBJECT")  # return to object mode
 
-    bmesh.update_edit_mesh(mesh)
-    bpy.ops.object.mode_set(mode="OBJECT")
+    # select vertices for removal
+    for i in reversed(range(len(mesh.vertices) - count, len(mesh.vertices))):
+      mesh.vertices[i].select = True
+
+    # go back into edit mode to delete
+    bpy.ops.object.mode_set(mode = 'EDIT')
+    bpy.ops.mesh.delete()
+    bpy.ops.object.editmode_toggle() # back to OBJECT mode
     self.scene.objects.active = originalActive
 
   def createPoints(self):
@@ -149,7 +154,7 @@ class PointCloudObjectFrameLoader:
       mesh.vertices.add(len(self.points) - existingVertexCount)
     else:
       # remove any surplus vertices
-      self._removeVertices(self.getContainerObject(), len(self.points) - existingVertexCount)
+      self._removeVertices(self.getContainerObject(), existingVertexCount - len(self.points))
 
     # initialize all vertices of the mesh
     idx = 0
