@@ -1,35 +1,58 @@
 // Daniel Shiffman
 // Kinect Point Cloud example
+// http://www.shiffman.net
+// https://github.com/shiffman/libfreenect/tree/master/wrappers/java/processing
 
-// https://github.com/shiffman/OpenKinect-for-Processing
-// http://shiffman.net/p5/kinect/
-
-import org.openkinect.freenect.*;
+import org.openkinect.*;
 import org.openkinect.processing.*;
+
+import java.io.*;
 
 // Kinect Library object
 Kinect kinect;
 
-// Angle for rotation
 float a = 0;
+
+// Size of kinect image
+int w = 640;
+int h = 480;
+
+// writing state indicator
+boolean write = false;
+
+// treshold filter initial value
+int fltValue = 950;
+
+
+// "recording" object. each vector element holds a coordinate map vector
+ArrayList <Object> recording = new ArrayList<Object>(); 
+
 
 // We'll use a lookup table so that we don't have to repeat the math over and over
 float[] depthLookUp = new float[2048];
 
 void setup() {
-  // Rendering in P3D
-  size(800, 600, P3D);
+  size(800,600,P3D);
   kinect = new Kinect(this);
+//  kinect.start();
   kinect.initDepth();
+  // We don't need the grayscale image in this example
+  // so this makes it more efficient
+//  kinect.processDepthImage(false);
 
   // Lookup table for all possible depth values (0 - 2047)
   for (int i = 0; i < depthLookUp.length; i++) {
     depthLookUp[i] = rawDepthToMeters(i);
   }
+  
 }
 
 void draw() {
+  
   background(0);
+  fill(255);
+  textMode(SCREEN);
+//  text("Kinect FR: " + (int)kinect.getDepthFPS() + "\nProcessing FR: " + (int)frameRate,10,16);
 
   // Get the raw depth as array of integers
   int[] depth = kinect.getRawDepth();
@@ -38,30 +61,59 @@ void draw() {
   int skip = 4;
 
   // Translate and rotate
-  translate(width/2, height/2, -50);
+  translate(width/2,height/2,-50);
   rotateY(a);
 
-  for (int x = 0; x < kinect.width; x += skip) {
-    for (int y = 0; y < kinect.height; y += skip) {
-      int offset = x + y*kinect.width;
+  //noStroke();
+  //lights();
+  
+  
+  int index = 0;
+
+  
+  PVector[] frame = new PVector[19200];
+  
+  stroke(255);
+  for(int x=0; x<w; x+=skip) {
+    for(int y=0; y<h; y+=skip) {
+      int offset = x+y*w;
 
       // Convert kinect data to world xyz coordinate
       int rawDepth = depth[offset];
-      PVector v = depthToWorld(x, y, rawDepth);
+      
+      boolean flt = true;
+      PVector v = depthToWorld(x,y,rawDepth);
+      if (flt && rawDepth > fltValue)
+      {
+        v = depthToWorld(x,y,2047);
+      }
 
-      stroke(255);
-      pushMatrix();
+      frame[index] = v;
+        
+      index++;   
+
+//      stroke(map(rawDepth,0,2048,0,256));
+//      pushMatrix();
       // Scale up by 200
-      float factor = 200;
-      translate(v.x*factor, v.y*factor, factor-v.z*factor);
-      // Draw a point
-      point(0, 0);
-      popMatrix();
+      float factor = 400;
+//      translate(v.x*factor,v.y*factor,factor-v.z*factor);
+      //sphere(1);
+//      point(0,0);
+point(v.x*factor,v.y*factor,factor-v.z*factor);
+  
+      //line (0,0,1,1);
+//      popMatrix();
     }
   }
+  
+  if (write == true) {
+    recording.add(frame);    
+
+  }
+  
 
   // Rotate
-  a += 0.015f;
+  //a += 0.015f;
 }
 
 // These functions come from: http://graphics.stanford.edu/~mdfisher/Kinect.html
@@ -86,3 +138,75 @@ PVector depthToWorld(int x, int y, int depthValue) {
   result.z = (float)(depth);
   return result;
 }
+
+void stop() {
+//  kinect.quit();
+  super.stop();
+}
+
+
+int currentFile = 0;
+
+void saveFile() {
+
+}
+
+void keyPressed() { // Press a key to save the data
+
+  if (key == '1')
+  {
+    fltValue += 50;
+    println("fltValue: " + fltValue);
+  }
+  else if (key == '2')
+  {
+    fltValue -= 50;
+    println("fltValue: " + fltValue);
+  }
+  else if (key=='4'){
+    if (write == true) {
+        write = false;
+        
+        println( "recorded " + recording.size() + " frames.");
+        
+        // saveFile();
+        
+        // save    
+      
+//      Enumeration e = recording.elements();
+      
+      println("Stopped Recording " + currentFile);
+      for(int i=0; i<recording.size(); i++){
+//      int i = 0;
+//      while (e.hasMoreElements()) {
+        
+         // Create one directory
+         boolean success = (new File("out"+currentFile)).mkdir(); 
+
+        
+        PrintWriter output = createWriter("out"+currentFile+"/frame" + i +".txt");
+        PVector [] frame = (PVector []) recording.get(i); //nextElement();
+        
+        for (int j = 0; j < frame.length; j++) {
+          if(frame[j].x * frame[j].y * frame[j].z != 0.0){
+             output.println(j + ", " + frame[j].x + ", " + frame[j].y + ", " + frame[j].z );
+          }
+        }
+        output.flush(); // Write the remaining data
+        output.close();
+      }
+      currentFile++;
+      
+      
+    
+      }
+  }
+  else if (key == '3') {
+        println("Started Recording "+currentFile);
+        recording.clear();
+        
+        write = true;
+  }
+
+}
+
