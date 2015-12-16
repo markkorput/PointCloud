@@ -17,6 +17,7 @@ import bpy
 from bpy.app.handlers import persistent
 import bmesh
 import os.path
+import mathutils
 
 # Scene updates
 class PointCloudLoader:
@@ -270,7 +271,11 @@ class PointCloudObjectFrameLoader:
     # initialize all vertices of the mesh
     idx = 0
     for point in self.points:
-      mesh.vertices[idx].co = (point[0], point[1], point[2])
+      if self.obj.pointCloudLoaderConfig.modify == True:
+        mesh.vertices[idx].co = (point[0]*self.obj.pointCloudLoaderConfig.vertMultiply[0], point[1]*self.obj.pointCloudLoaderConfig.vertMultiply[1], point[2]*self.obj.pointCloudLoaderConfig.vertMultiply[2])
+        mesh.vertices[idx].co += mathutils.Vector(self.obj.pointCloudLoaderConfig.vertOffset)
+      else:
+        mesh.vertices[idx].co = (point[0], point[1], point[2])
       idx+=1
 
     self.scene.update()
@@ -365,6 +370,12 @@ class PointCloudLoaderPanel(bpy.types.Panel):
           row.prop(config, "frameRatio")
           layout.row().prop(config, "skin")
 
+          row = layout.row()
+          row.prop(config, 'modify', text="Mesh loader modifiers")
+          if config.modify == True:
+            layout.row().prop(config, 'vertMultiply')
+            layout.row().prop(config, 'vertOffset')
+
           layout.row().operator("object.load_point_cloud", text="Load point cloud now")
 
         layout.row().operator("object.remove_point_cloud", text="Remove point cloud")
@@ -389,6 +400,15 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
     cls.numFiles = bpy.props.IntProperty(name="Number of files", default=100, soft_min=0)
     cls.frameRatio = bpy.props.FloatProperty(name="Frame ratio", default=1.0, soft_min=0.0, description="Point cloud frame / blender frame ratio")
     cls.skin = bpy.props.BoolProperty(name="skin", default=False, description="Skin point cloud mesh using, Point Cloud Skinner addon")
+
+    cls.modify = bpy.props.BoolProperty(name="modify", default=False, description="Modify point cloud vertices at load time")
+    try:
+      cls.vertOffset = bpy.props.FloatVectorProperty(name="Vertex Offset", description="The position of all vertices is offset with this vector at load-time", default=(1.0, 1.0, 1.0))
+      cls.vertMultiply = bpy.props.FloatVectorProperty(name="Vertex Multiply", description="The position of all vertices is multiplied by this vector at load-time", default=(1.0, 1.0, 1.0))
+    except: #(ValueError, AttributeError, NameError):
+      pass
+
+    # not configurable; for internal use (optimilization)
     cls.currentFrameLoaded = bpy.props.StringProperty(name="Currently Loaded Frame File", default="")
 
   ## Unregister is causing errors and doesn't seem to be necessary
