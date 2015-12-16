@@ -382,9 +382,12 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
     cls.skin = bpy.props.BoolProperty(name="skin", default=False, description="Skin point cloud mesh using, Point Cloud Skinner addon")
     cls.currentFrameLoaded = bpy.props.StringProperty(name="Currently Loaded Frame File", default="")
 
-  @classmethod
-  def unregister(cls):
-    del bpy.types.Object.pointCloudLoaderConfig
+  ## Unregister is causing errors and doesn't seem to be necessary
+  # @classmethod
+  # def unregister(cls):
+  #   print("Unreg: ")
+  #   print(dir(bpy.types.Object))
+  #   del bpy.types.Object.pointCloudLoaderConfig
 # end of class PointCloudLoaderConfig
 
 
