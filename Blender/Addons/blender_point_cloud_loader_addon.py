@@ -46,6 +46,7 @@ class PointCloudLoader:
 class ObjectPointObjectLoader:
   def __init__(self, obj, scene=None, force=False):
     self.obj = obj
+    self.config = obj.pointCloudLoaderConfig
     self.force=force
 
     self.scene=scene
@@ -62,11 +63,18 @@ class ObjectPointObjectLoader:
       print("Couldn't find point cloud frame file, aborting")
       return
 
-    if self.force != True and self.obj.pointCloudLoaderConfig.currentFrameLoaded == path:
+    if self.force != True and self.config.currentFrameLoaded == path:
       print("Current point cloud frame already loaded, aborting")
       return
 
-    file = PointCloudFrameFile(path=path, skip=self.obj.pointCloudLoaderConfig.skipPoints)
+    file = PointCloudFrameFile(path=path, skip=self.config.skipPoints)
+    if self.config.bounds == True:
+      file.minBounds = self.config.boundsMin
+      file.maxBounds = self.config.boundsMax
+
+    if self.config.modify:
+      file.offset = self.config.vertOffset
+      file.multiply = self.config.vertMultiply
 
     # create mesh generator instance, feed it the points form the file parser
     pcofl = PointCloudObjectFrameLoader(self.obj, file.get_points(), scene=self.scene)
@@ -92,11 +100,12 @@ class ObjectPointObjectLoader:
     return hasattr(self.scene, 'CONFIG_PointCloudSkinner')
 
   def _skinObject(self, obj):
-    print("Skinning mesh")
     if self.canSkin() != True:
       print("Can't skin point cloud mesh; scene doesn't have CONFIG_PointCloudSkinner attribute. ")
       print("Please install and enable Point Cloud Skinner addon. See http://sourceforge.net/projects/pointcloudskin/")
       return
+
+    print("Skinning mesh")
 
     originalSkinObject = self.scene.CONFIG_PointCloudSkinner.target_object # remember for later restore
     self.scene.CONFIG_PointCloudSkinner.target_object = obj.name
@@ -211,14 +220,14 @@ class PointCloudObjectFrameLoader:
 
     bpy.ops.object.mode_set(mode="EDIT")  # endter edit mode just for a deselect all
     bpy.ops.mesh.select_all(action = 'DESELECT')
-    bpy.ops.object.mode_set(mode="OBJECT")  # return to object mode
+    # bpy.ops.object.mode_set(mode="OBJECT")  # return to object mode
 
     # select vertices for removal
     for i in reversed(range(len(mesh.vertices) - count, len(mesh.vertices))):
       mesh.vertices[i].select = True
 
     # go back into edit mode to delete
-    bpy.ops.object.mode_set(mode = 'EDIT')
+    # bpy.ops.object.mode_set(mode = 'EDIT')
     bpy.ops.mesh.delete()
     bpy.ops.object.editmode_toggle() # back to OBJECT mode
     self.scene.objects.active = originalActive
@@ -258,6 +267,7 @@ class PointCloudObjectFrameLoader:
     print("Creating point cloud for object: "+self.obj.name)
     # find existing mesh or creates a new one (inside a "pointcloud" container object)
     mesh = self.getMesh()
+    config = self.obj.pointCloudLoaderConfig
 
     # first make sure the mesh has exactly the right amount of vertices
     existingVertexCount = len(mesh.vertices.values())
@@ -273,12 +283,8 @@ class PointCloudObjectFrameLoader:
     # initialize all vertices of the mesh
     idx = 0
     for point in self.points:
-      if self.obj.pointCloudLoaderConfig.modify == True:
-        mesh.vertices[idx].co = (point[0]*self.obj.pointCloudLoaderConfig.vertMultiply[0], point[1]*self.obj.pointCloudLoaderConfig.vertMultiply[1], point[2]*self.obj.pointCloudLoaderConfig.vertMultiply[2])
-        mesh.vertices[idx].co += mathutils.Vector(self.obj.pointCloudLoaderConfig.vertOffset)
-      else:
-        mesh.vertices[idx].co = (point[0], point[1], point[2])
-      idx+=1
+      mesh.vertices[idx].co = (point[0], point[1], point[2])
+      idx += 1
 
     self.scene.update()
 # end of class PointCloudObjectFrameLoader
@@ -287,12 +293,19 @@ class PointCloudObjectFrameLoader:
 # A class that represents one file (frame) of piont cloud data,
 # this class takes care of parsing the file's data into python data (arrays)
 class PointCloudFrameFile:
-  def __init__(self, path, skip=0, logger=None):
+  def __init__(self, path, skip=0, logger=None, minBounds=None, maxBounds=None, offset=None, multiply=None):
     self.path = path
+    self.logger = logger
+    self.minBounds = minBounds
+    self.maxBounds = maxBounds
+    self.offset = offset
+    self.multiply = multiply
+
     self.skip = skip # after every read point, skip this number of points
     self.points = [] # for the points defined in the file
     self.all_points = [] # for all points; also the non-active ones
-    self.logger = logger
+    self.rejected_points = [] # for all points which are reject because of ouf enforced bounds
+
     if self.logger == None:
       self.logger = logging # default logging object from the imported logging module
 
@@ -314,14 +327,40 @@ class PointCloudFrameFile:
       line = f.readline()
       try: 
         idx,x,y,z = [100*float(v) for v in line.split(",")]
+        reject = False
         # idx = int(idx)
 
-        v = (x,y,z) #Vector(x,y,z) #c4d.Vector(x,y,z) # turn coordinates into c4d Vector object
+        v = list((x,y,z)) #Vector(x,y,z) #c4d.Vector(x,y,z) # turn coordinates into c4d Vector object
+
+        if self.multiply != None:
+          for i in range(3):
+            v[i] = v[i] * self.multiply[i]
+
+        if self.offset != None:
+          for i in range(3):
+            v[i] += self.offset[i]
+
+        if self.minBounds != None:
+          for i in range(3):
+            if v[i] < self.minBounds[i]:
+              reject = True
+              break
+
+        if reject != True and self.maxBounds != None:
+          for i in range(3):
+            if v[i] > self.maxBounds[i]:
+              reject = True
+              break
+
+        v = (v[0], v[1], v[2]) # convert from list to immutable tuple
         self.all_points.append(v) # add the vector to our list
 
         # create selection of relevant (non-zero) points
-        if (x*y*z != 0):
-          self.points.append(v)
+        if reject == True:
+          self.rejected_points.append(v)
+        else:
+          if x*y*z != 0:
+            self.points.append(v)
 
       except ValueError:
         break
@@ -375,11 +414,15 @@ class PointCloudLoaderPanel(bpy.types.Panel):
             if ObjectPointObjectLoader(context.object).canSkin() != True:
               layout.row().label(text="!! Please install/enable Point Cloud Skinner addon !!")
 
-          row = layout.row()
-          row.prop(config, 'modify', text="Mesh loader modifiers")
+          layout.row().prop(config, 'modify', text="Vertex load-time modifiers")
           if config.modify == True:
             layout.row().prop(config, 'vertMultiply')
             layout.row().prop(config, 'vertOffset')
+
+          layout.row().prop(config, 'bounds', text="Enforce vertex bounds at load-time")
+          if config.bounds == True:
+            layout.row().prop(config, 'boundsMin')
+            layout.row().prop(config, 'boundsMax')
 
           layout.row().operator("object.load_point_cloud", text="Load point cloud now")
 
@@ -413,6 +456,12 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
     except: #(ValueError, AttributeError, NameError):
       pass
 
+    cls.bounds = bpy.props.BoolProperty(name="bounds", default=False, description="Apply bounding box that rejects vertices at load time")
+    try:
+      cls.boundsMin = bpy.props.FloatVectorProperty(name="Bounds minimum vector", default=(-10.0, -10.0, -10.0))
+      cls.boundsMax = bpy.props.FloatVectorProperty(name="Bounds maximum vector", default=(10.0, 10.0, 10.0))
+    except:
+      pass
     # not configurable; for internal use (optimilization)
     cls.currentFrameLoaded = bpy.props.StringProperty(name="Currently Loaded Frame File", default="")
 
