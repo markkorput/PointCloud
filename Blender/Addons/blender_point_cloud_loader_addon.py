@@ -88,9 +88,12 @@ class ObjectPointObjectLoader:
   def removeExisting(self):
     PointCloudObjectFrameLoader(self.obj, scene=self.scene).removeExisting()
 
+  def canSkin(self):
+    return hasattr(self.scene, 'CONFIG_PointCloudSkinner')
+
   def _skinObject(self, obj):
     print("Skinning mesh")
-    if hasattr(self.scene, 'CONFIG_PointCloudSkinner') != True:
+    if self.canSkin():
       print("Can't skin point cloud mesh; scene doesn't have CONFIG_PointCloudSkinner attribute. ")
       print("Please install and enable Point Cloud Skinner addon. See http://sourceforge.net/projects/pointcloudskin/")
       return
@@ -236,7 +239,6 @@ class PointCloudObjectFrameLoader:
     originalActive = self.scene.objects.active # remember currently active object, so we can restore at the end of this function
     self.scene.objects.active = containerObj # make specified object the active object
 
-    
     # Get a BMesh representation
     # bm = bmesh.from_edit_mesh(mesh)
     bm = bmesh.new()
@@ -369,6 +371,9 @@ class PointCloudLoaderPanel(bpy.types.Panel):
           row = layout.row()
           row.prop(config, "frameRatio")
           layout.row().prop(config, "skin")
+          if config.skin == True:
+            if ObjectPointObjectLoader(context.object).canSkin() != True:
+              layout.row().label(text="!! Please install/enable Point Cloud Skinner addon !!")
 
           row = layout.row()
           row.prop(config, 'modify', text="Mesh loader modifiers")
