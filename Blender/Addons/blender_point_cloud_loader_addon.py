@@ -31,20 +31,21 @@ class PointCloudLoader:
     return [obj for obj in self.scene.objects if obj.pointCloudLoaderConfig.enabled == True]
 
   # loads the current frame for all point-cloud-enabled objects in the scene
-  def loadFrame(self):
+  def loadFrame(self, force=False):
     objs = self.enabledObjects()
     print("Number of point cloud objects: {0}".format(len(objs)))
 
     # load point clouds for the current frame for all point-cloud-enabled objects in the scene
     for obj in objs:
-      ObjectPointObjectLoader(obj, scene=self.scene).loadFrame()
+      ObjectPointObjectLoader(obj, scene=self.scene, force=force).loadFrame()
 # end of class PointCloudLoader
 
 
 # Object updater
 class ObjectPointObjectLoader:
-  def __init__(self, obj, scene=None):
+  def __init__(self, obj, scene=None, force=False):
     self.obj = obj
+    self.force=force
 
     self.scene=scene
     if self.scene == None: # default to currently active scene
@@ -60,7 +61,7 @@ class ObjectPointObjectLoader:
       print("Couldn't find point cloud frame file, aborting")
       return
 
-    if self.obj.pointCloudLoaderConfig.currentFrameLoaded == path:
+    if self.force != True and self.obj.pointCloudLoaderConfig.currentFrameLoaded == path:
       print("Current point cloud frame already loaded, aborting")
       return
 
@@ -77,13 +78,16 @@ class ObjectPointObjectLoader:
     pcofl.createPoints()
     # "skin" the mesh if the skin flag is enabled
     if self.obj.pointCloudLoaderConfig.skin == True:
-      self.skinObject(pcofl.getContainerObject())
+      self._skinObject(pcofl.getContainerObject())
 
     # done, store the path to the point-cloud-data file in the object's config, so
     # we know we don't have to load it again if the same file is specified
     self.obj.pointCloudLoaderConfig.currentFrameLoaded = path
 
-  def skinObject(self, obj):
+  def removeExisting(self):
+    PointCloudObjectFrameLoader(self.obj, scene=self.scene).removeExisting()
+
+  def _skinObject(self, obj):
     print("Skinning mesh")
     if hasattr(self.scene, 'CONFIG_PointCloudSkinner') != True:
       print("Can't skin point cloud mesh; scene doesn't have CONFIG_PointCloudSkinner attribute. ")
@@ -146,7 +150,7 @@ class ObjectFileManager:
 # This class performas the actual mesh operations
 # (creating/removing/updating vertices and faces)
 class PointCloudObjectFrameLoader:
-  def __init__(self, obj, points, scene=None):
+  def __init__(self, obj, points = [], scene=None):
     self.obj = obj
     self.points = points
     self.scene = scene
@@ -359,8 +363,13 @@ class PointCloudLoaderPanel(bpy.types.Panel):
             row.label(text="Number of files will be auto-detected at runtime")
           row = layout.row()
           row.prop(config, "frameRatio")
-          row = layout.row()
-          row.prop(config, "skin")
+          layout.row().prop(config, "skin")
+
+          layout.row().operator("object.load_point_cloud", text="Load point cloud now")
+
+        layout.row().operator("object.remove_point_cloud", text="Remove point cloud")
+
+
 # end of class PointCloudLoaderPanel
 
 
@@ -390,6 +399,37 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
   #   del bpy.types.Object.pointCloudLoaderConfig
 # end of class PointCloudLoaderConfig
 
+
+# Operation classes
+class PointCloudLoaderLoadOperator(bpy.types.Operator):
+    bl_idname = "object.load_point_cloud"
+    bl_label = "Load a point cloud (Point Cloud Loader)"
+    bl_description = "Load point cloud data from external files."
+
+    # @classmethod
+    # def poll(cls, context):
+    #     return True
+
+    def execute(self, context):
+      obj = context.object
+      if obj.pointCloudLoaderConfig.enabled == True:
+        ObjectPointObjectLoader(obj, force=True).loadFrame()
+      return {'FINISHED'}
+
+class PointCloudLoaderRemoveOperator(bpy.types.Operator):
+    bl_idname = "object.remove_point_cloud"
+    bl_label = "Remove point cloud (Point Cloud Loader)"
+    bl_description = "Remove loaded point cloud mesh"
+
+    # @classmethod
+    # def poll(cls, context):
+    #     return True
+
+    def execute(self, context):
+      obj = context.object
+      if obj.pointCloudLoaderConfig.enabled == True:
+        ObjectPointObjectLoader(obj, force=True).removeExisting()
+      return {'FINISHED'}
 
 # Blender addon stuff, (un-)registerers and events handlers
 @persistent
