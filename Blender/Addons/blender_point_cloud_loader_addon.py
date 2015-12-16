@@ -16,7 +16,9 @@ import logging
 import bpy
 from bpy.app.handlers import persistent
 import bmesh
+import os.path
 
+# Scene updates
 class PointCloudLoader:
   def __init__(self, scene=None):
     self.scene=scene
@@ -35,37 +37,51 @@ class PointCloudLoader:
 
     # load point clouds for the current frame for all point-cloud-enabled objects in the scene
     for obj in objs:
-      self.loadObjectFrame(obj)
+      ObjectPointObjectLoader(obj, scene=self.scene).loadFrame()
+# end of class PointCloudLoader
+
+
+# Object updater
+class ObjectPointObjectLoader:
+  def __init__(self, obj, scene=None):
+    self.obj = obj
+
+    self.scene=scene
+    if self.scene == None: # default to currently active scene
+      self.scene = bpy.context.scene 
 
   # load point cloud for the current frame for the specified object
-  def loadObjectFrame(self, obj):
-    print("Loading point cloud for object: " + obj.name)
+  def loadFrame(self):
+    print("Loading point cloud for object: " + self.obj.name)
 
     # get file path, create file parser instance
-    path = self.objectFrameFilePath(obj)
+    path = ObjectFileManager(self.obj).frameFilePath(self.scene.frame_current)
+    if path == None:
+      print("Couldn't find point cloud frame file, aborting")
+      return
 
-    if obj.pointCloudLoaderConfig.currentFrameLoaded == path:
+    if self.obj.pointCloudLoaderConfig.currentFrameLoaded == path:
       print("Current point cloud frame already loaded, aborting")
       return
 
-    file = PointCloudFrameFile(path=path, skip=obj.pointCloudLoaderConfig.skipPoints)
-    
+    file = PointCloudFrameFile(path=path, skip=self.obj.pointCloudLoaderConfig.skipPoints)
+
     # create mesh generator instance, feed it the points form the file parser
-    pcofl = PointCloudObjectFrameLoader(obj, file.get_points(), scene=self.scene)
+    pcofl = PointCloudObjectFrameLoader(self.obj, file.get_points(), scene=self.scene)
     
-    if obj.pointCloudLoaderConfig.skin == True:
+    if self.obj.pointCloudLoaderConfig.skin == True:
       pcofl.removeExisting()
       
     # pcofl.removeFaces()
 
     pcofl.createPoints()
     # "skin" the mesh if the skin flag is enabled
-    if obj.pointCloudLoaderConfig.skin == True:
+    if self.obj.pointCloudLoaderConfig.skin == True:
       self.skinObject(pcofl.getContainerObject())
 
     # done, store the path to the point-cloud-data file in the object's config, so
     # we know we don't have to load it again if the same file is specified
-    obj.pointCloudLoaderConfig.currentFrameLoaded = path
+    self.obj.pointCloudLoaderConfig.currentFrameLoaded = path
 
   def skinObject(self, obj):
     print("Skinning mesh")
@@ -78,19 +94,58 @@ class PointCloudLoader:
     self.scene.CONFIG_PointCloudSkinner.target_object = obj.name
     bpy.ops.scene.point_cloud_skinner_skin()
     self.scene.CONFIG_PointCloudSkinner.target_object = originalSkinObject # restore
+# end of class ObjectPointObjectLoader
+
+
+# manages point-cloud data frame files
+class ObjectFileManager:
+  def __init__(self, obj):
+    self.obj = obj
+    self.config = obj.pointCloudLoaderConfig
 
   # returns the file path of the file that contains
-  # the point-cloud data for the current frame
-  def objectFrameFilePath(self, obj):
-      currentFrame = self.scene.frame_current
-      mod = int(currentFrame*obj.pointCloudLoaderConfig.frameRatio) % obj.pointCloudLoaderConfig.numFiles
-      path = obj.pointCloudLoaderConfig.fileName % mod
-      if path.startswith("/"):
-        return path
-      return bpy.path.abspath("//"+path)
-# end of class PointCloudLoader
+  # the point-cloud data for the specified scene frame
+  def frameFilePath(self, sceneFrameNumber):
+    if self.numberOfFiles() == 0:
+      return None
+
+    fnumber = int(sceneFrameNumber*self.config.frameRatio) % self.numberOfFiles()
+    return self.pathForPointCloudFrame(fnumber)
+
+  # turns a point cloud frame number into a frame file path
+  def pathForPointCloudFrame(self, pointCloudFrameNumber):
+    path = self.config.fileName % pointCloudFrameNumber
+
+    if path.startswith("/"): # absolute path?
+      return path
+    return bpy.path.abspath("//"+path) # relative path (must be relative to blender file)
+
+  def numberOfFiles(self):
+    if self.config and self.config.numFiles > 0:
+      return self.config.numFiles
+
+    return self.autoNumberOfFiles()
+
+  # this method tries to determine the number of point cloud files automatically
+  def autoNumberOfFiles(self):
+    if hasattr(self, 'autoNumberOfFiles_cache'):
+      return self.autoNumberOfFiles_cache
+
+    minN = 0
+    maxN = 0
+
+    while os.path.isfile(self.pathForPointCloudFrame(maxN)):
+      maxN+=1
+
+    self.autoNumberOfFiles_cache = maxN - minN
+    print("ObjectFileManager#autoNumberOfFiles - number of files detected: {0}".format(self.autoNumberOfFiles_cache))
+    return self.autoNumberOfFiles_cache
+
+# end  of class ObjectFileManager
 
 
+# This class performas the actual mesh operations
+# (creating/removing/updating vertices and faces)
 class PointCloudObjectFrameLoader:
   def __init__(self, obj, points, scene=None):
     self.obj = obj
@@ -270,6 +325,7 @@ class PointCloudFrameFile:
 # end of class PointCloudFrameFile
 
 
+# This class is in charge of the blender UI panel
 class PointCloudLoaderPanel(bpy.types.Panel):
     """Creates a Point Cloud Loader Panel in the Object properties window"""
     bl_label = "Point Cloud Loader"
@@ -302,6 +358,7 @@ class PointCloudLoaderPanel(bpy.types.Panel):
 # end of class PointCloudLoaderPanel
 
 
+# This class represents the config data (that the UI Panel interacts with)
 class PointCloudLoaderConfig(bpy.types.PropertyGroup):
   @classmethod
   def register(cls):
