@@ -10,7 +10,7 @@ import java.io.*;
 
 // Kinect Library object
 Kinect kinect;
-
+boolean recordZeroPoints = false;
 float a = 0;
 
 // Size of kinect image
@@ -21,15 +21,18 @@ int h = 480;
 boolean write = false;
 
 // treshold filter initial value
-int fltValue = 950;
+int fltValue = 1000;
 
 
-// "recording" object. each vector element holds a coordinate map vector
+// "recording" object. each vector element holds a coordinate 4map vector
 ArrayList <Object> recording = new ArrayList<Object>(); 
 
 
 // We'll use a lookup table so that we don't have to repeat the math over and over
 float[] depthLookUp = new float[2048];
+
+int currentFile = 33;
+
 
 void setup() {
   size(800,600,P3D);
@@ -88,11 +91,11 @@ void draw() {
         v = depthToWorld(x,y,2047);
       }
 
-      frame[index] = v;
-        
-      index++;   
 
-//      stroke(map(rawDepth,0,2048,0,256));
+        frame[index] = v;
+        index++;
+        
+        //      stroke(map(rawDepth,0,2048,0,256));
 //      pushMatrix();
       // Scale up by 200
       float factor = 400;
@@ -103,11 +106,15 @@ point(v.x*factor,v.y*factor,factor-v.z*factor);
   
       //line (0,0,1,1);
 //      popMatrix();
+      
+
+
     }
   }
   
   if (write == true) {
-    recording.add(frame);    
+    recording.add(frame);
+    println("Recorded frame: " + recording.size());    
 
   }
   
@@ -144,9 +151,6 @@ void stop() {
   super.stop();
 }
 
-
-int currentFile = 0;
-
 void saveFile() {
 
 }
@@ -155,12 +159,12 @@ void keyPressed() { // Press a key to save the data
 
   if (key == '1')
   {
-    fltValue += 50;
+    fltValue += 1;
     println("fltValue: " + fltValue);
   }
   else if (key == '2')
   {
-    fltValue -= 50;
+    fltValue -= 1;
     println("fltValue: " + fltValue);
   }
   else if (key=='4'){
@@ -188,7 +192,7 @@ void keyPressed() { // Press a key to save the data
         PVector [] frame = (PVector []) recording.get(i); //nextElement();
         
         for (int j = 0; j < frame.length; j++) {
-          if(frame[j].x * frame[j].y * frame[j].z != 0.0){
+          if(recordZeroPoints == true || frame[j].x * frame[j].y * frame[j].z != 0.0){
              output.println(j + ", " + frame[j].x + ", " + frame[j].y + ", " + frame[j].z );
           }
         }

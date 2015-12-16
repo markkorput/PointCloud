@@ -1,0 +1,3 @@
+[submodule "OpenFrameworks/ofxKinectMeshRecorder"]
+	path = OpenFrameworks/ofxKinectMeshRecorder
+	url = git@github.com:pelayomendez/ofxKinectMeshRecorder.git
