@@ -93,7 +93,7 @@ class ObjectPointObjectLoader:
 
   def _skinObject(self, obj):
     print("Skinning mesh")
-    if self.canSkin():
+    if self.canSkin() != True:
       print("Can't skin point cloud mesh; scene doesn't have CONFIG_PointCloudSkinner attribute. ")
       print("Please install and enable Point Cloud Skinner addon. See http://sourceforge.net/projects/pointcloudskin/")
       return
