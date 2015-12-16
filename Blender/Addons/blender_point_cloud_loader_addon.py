@@ -354,6 +354,9 @@ class PointCloudLoaderPanel(bpy.types.Panel):
           row.prop(config, "skipPoints")
           row = layout.row()
           row.prop(config, "numFiles")
+          if config.numFiles == 0:
+            row = layout.row()
+            row.label(text="Number of files will be auto-detected at runtime")
           row = layout.row()
           row.prop(config, "frameRatio")
           row = layout.row()
