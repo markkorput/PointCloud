@@ -140,7 +140,6 @@ class ObjectFileManager:
     self.autoNumberOfFiles_cache = maxN - minN
     print("ObjectFileManager#autoNumberOfFiles - number of files detected: {0}".format(self.autoNumberOfFiles_cache))
     return self.autoNumberOfFiles_cache
-
 # end  of class ObjectFileManager
 
 
@@ -334,27 +333,31 @@ class PointCloudLoaderPanel(bpy.types.Panel):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
+    def draw_header(self, context):
+      layout = self.layout
+      config = context.object.pointCloudLoaderConfig
+      layout.prop(config, "enabled", text='')
 
     def draw(self, context):
         layout = self.layout
+        config = context.object.pointCloudLoaderConfig
 
-        obj = context.object
-        config = obj.pointCloudLoaderConfig
+        # row = layout.row()
+        # row.label(text="Active object is: " + obj.name)
+        # row = layout.row()
+        # row.prop(config, "enabled")
 
-        row = layout.row()
-        row.label(text="Active object is: " + obj.name)
-        row = layout.row()
-        row.prop(config, "enabled")
-        row = layout.row()
-        row.prop(config, "fileName")
-        row = layout.row()
-        row.prop(config, "skipPoints")
-        row = layout.row()
-        row.prop(config, "numFiles")
-        row = layout.row()
-        row.prop(config, "frameRatio")
-        row = layout.row()
-        row.prop(config, "skin")
+        if config.enabled == True:
+          row = layout.row()
+          row.prop(config, "fileName")
+          row = layout.row()
+          row.prop(config, "skipPoints")
+          row = layout.row()
+          row.prop(config, "numFiles")
+          row = layout.row()
+          row.prop(config, "frameRatio")
+          row = layout.row()
+          row.prop(config, "skin")
 # end of class PointCloudLoaderPanel
 
 
