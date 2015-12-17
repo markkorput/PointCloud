@@ -392,29 +392,24 @@ class PointCloudLoaderPanel(bpy.types.Panel):
         layout = self.layout
         config = context.object.pointCloudLoaderConfig
 
-        # row = layout.row()
-        # row.label(text="Active object is: " + obj.name)
-        # row = layout.row()
-        # row.prop(config, "enabled")
-
         if config.enabled == True:
-          row = layout.row()
-          row.prop(config, "fileName")
-          row = layout.row()
-          row.prop(config, "skipPoints")
-          row = layout.row()
-          row.prop(config, "numFiles")
+          layout.row().prop(config, "fileName")
+          layout.row().prop(config, "skipPoints")
+          layout.row().prop(config, "numFiles")
+
           if config.numFiles == 0:
-            row = layout.row()
-            row.label(text="Number of files will be auto-detected at runtime")
-          row = layout.row()
-          row.prop(config, "frameRatio")
+            layout.row().label(text="Number of files will be auto-detected at runtime")
+
+          layout.row().operator("object.set_pointcloud_animation_length", text="Set animation length")
+          layout.row().prop(config, "frameRatio")
+
           layout.row().prop(config, "skin")
           if config.skin == True:
             if ObjectPointObjectLoader(context.object).canSkin() != True:
               layout.row().label(text="!! Please install/enable Point Cloud Skinner addon !!")
 
           layout.row().prop(config, 'modify', text="Vertex load-time modifiers")
+
           if config.modify == True:
             layout.row().prop(config, 'vertMultiply')
             layout.row().prop(config, 'vertOffset')
@@ -424,11 +419,10 @@ class PointCloudLoaderPanel(bpy.types.Panel):
             layout.row().prop(config, 'boundsMin')
             layout.row().prop(config, 'boundsMax')
 
+          layout.row().operator("object.reload_point_cloud", text="Reload point cloud")
           layout.row().operator("object.load_point_cloud", text="Load point cloud now")
 
         layout.row().operator("object.remove_point_cloud", text="Remove point cloud")
-
-
 # end of class PointCloudLoaderPanel
 
 
@@ -503,6 +497,34 @@ class PointCloudLoaderRemoveOperator(bpy.types.Operator):
       obj = context.object
       if obj.pointCloudLoaderConfig.enabled == True:
         ObjectPointObjectLoader(obj, force=True).removeExisting()
+      return {'FINISHED'}
+
+class PointCloudLoaderReloadOperator(bpy.types.Operator):
+    bl_idname = "object.reload_point_cloud"
+    bl_label = "Remove point cloud (Point Cloud Loader)"
+    bl_description = "Remove loaded point cloud mesh"
+
+    # @classmethod
+    # def poll(cls, context):
+    #     return True
+
+    def execute(self, context):
+      bpy.ops.object.remove_point_cloud()
+      bpy.ops.object.load_point_cloud()
+      return {'FINISHED'}
+
+class PointCloudLoaderSetPointcloudAnimationLengthOperator(bpy.types.Operator):
+    bl_idname = "object.set_pointcloud_animation_length"
+    bl_label = "Set animation length based on point cloud data length (Point Cloud Loader)"
+    bl_description = "Make blender's render animation length fit the number of point cloud data frames."
+
+    # @classmethod
+    # def poll(cls, context):
+    #     return True
+
+    def execute(self, context):
+      context.scene.frame_start = 0
+      context.scene.frame_end = ObjectFileManager(context.object).numberOfFiles()-1
       return {'FINISHED'}
 
 # Blender addon stuff, (un-)registerers and events handlers
