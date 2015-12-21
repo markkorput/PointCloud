@@ -89,6 +89,10 @@ class ObjectPointObjectLoader:
     if self.obj.pointCloudLoaderConfig.skin == True:
       self._skinObject(pcofl.getContainerObject())
 
+      if self.config.materialName != None and self.config.materialName != '':
+        materialiser = PointCloudMeshMaterialiser(obj=pcofl.getContainerObject(), materialName=self.config.materialName)
+        materialiser.applyMaterial()
+
     # done, store the path to the point-cloud-data file in the object's config, so
     # we know we don't have to load it again if the same file is specified
     self.obj.pointCloudLoaderConfig.currentFrameLoaded = path
@@ -302,6 +306,22 @@ class PointCloudObjectFrameLoader:
     self.scene.update()
 # end of class PointCloudObjectFrameLoader
 
+# this class applies a specified existing material to a specified existing object
+class PointCloudMeshMaterialiser:
+  def __init__(self, obj=None, materialName=None):
+    self.obj = obj
+    self.materialName = materialName
+
+  def applyMaterial(self):
+    print("Applying material {0} to object {1}".format(self.materialName, self.obj.name))
+
+    materialIdx = bpy.data.materials.find(self.materialName)
+
+    if materialIdx == -1:
+      print("Material not found, aborting")
+      return
+
+    self.obj.data.materials.append(bpy.data.materials[materialIdx])
 
 # A class that represents one file (frame) of piont cloud data,
 # this class takes care of parsing the file's data into python data (arrays)
@@ -418,6 +438,8 @@ class PointCloudLoaderPanel(bpy.types.Panel):
           layout.row().prop(config, "pointCloudFrame")
 
           layout.row().prop(config, "skin")
+          layout.row().prop(config, "materialName")
+
           if config.skin == True:
             if ObjectPointObjectLoader(context.object).canSkin() != True:
               layout.row().label(text="!! Please install/enable Point Cloud Skinner addon !!")
@@ -458,6 +480,7 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
     cls.pointCloudFrame = bpy.props.IntProperty(name="Current Point Cloud Data Frame", default=-1, soft_min=-1, description="Key-frameable property to specify which ppoint cloud data frame to use. When -1, it will be ignored, and the frameRatio will be used to calculate the current point cloud data from from the current scene frame.")
 
     cls.skin = bpy.props.BoolProperty(name="skin", default=False, description="Skin point cloud mesh using, Point Cloud Skinner addon")
+    cls.materialName = bpy.props.StringProperty(name="Material name", default="")
 
     cls.modify = bpy.props.BoolProperty(name="modify", default=False, description="Modify point cloud vertices at load time")
     try:
@@ -542,6 +565,7 @@ class PointCloudLoaderSetPointcloudAnimationLengthOperator(bpy.types.Operator):
       context.scene.frame_start = 0
       context.scene.frame_end = ObjectFileManager(context.object).numberOfFiles()-1
       return {'FINISHED'}
+      
 
 # Blender addon stuff, (un-)registerers and events handlers
 @persistent
