@@ -120,17 +120,30 @@ class ObjectFileManager:
     self.obj = obj
     self.config = obj.pointCloudLoaderConfig
 
+  def getPointCloudFrameNumber(self, sceneFrameNumber):
+    # first see if they pointCloudFrame config property
+    # is set to a valid point cloud frame number, if so, return that
+    if self.config.pointCloudFrame != -1:
+      return self.config.pointCloudFrame
+
+    total = self.numberOfFiles()
+    if total == 0:
+      return None
+
+    # calculate the PC data frame number using the frameRatio config property
+    return int(sceneFrameNumber*self.config.frameRatio) % total
+
   # returns the file path of the file that contains
   # the point-cloud data for the specified scene frame
   def frameFilePath(self, sceneFrameNumber):
-    if self.numberOfFiles() == 0:
-      return None
-
-    fnumber = int(sceneFrameNumber*self.config.frameRatio) % self.numberOfFiles()
+    fnumber = self.getPointCloudFrameNumber(sceneFrameNumber)
     return self.pathForPointCloudFrame(fnumber)
 
   # turns a point cloud frame number into a frame file path
   def pathForPointCloudFrame(self, pointCloudFrameNumber):
+    if pointCloudFrameNumber == None:
+      return None
+
     path = self.config.fileName % pointCloudFrameNumber
 
     if path.startswith("/"): # absolute path?
@@ -402,6 +415,7 @@ class PointCloudLoaderPanel(bpy.types.Panel):
 
           layout.row().operator("object.set_pointcloud_animation_length", text="Set animation length")
           layout.row().prop(config, "frameRatio")
+          layout.row().prop(config, "pointCloudFrame")
 
           layout.row().prop(config, "skin")
           if config.skin == True:
@@ -441,6 +455,8 @@ class PointCloudLoaderConfig(bpy.types.PropertyGroup):
     cls.skipPoints = bpy.props.IntProperty(name="Skip Points", default=0, soft_min=0)
     cls.numFiles = bpy.props.IntProperty(name="Number of files", default=100, soft_min=0)
     cls.frameRatio = bpy.props.FloatProperty(name="Frame ratio", default=1.0, soft_min=0.0, description="Point cloud frame / blender frame ratio")
+    cls.pointCloudFrame = bpy.props.IntProperty(name="Current Point Cloud Data Frame", default=-1, soft_min=-1, description="Key-frameable property to specify which ppoint cloud data frame to use. When -1, it will be ignored, and the frameRatio will be used to calculate the current point cloud data from from the current scene frame.")
+
     cls.skin = bpy.props.BoolProperty(name="skin", default=False, description="Skin point cloud mesh using, Point Cloud Skinner addon")
 
     cls.modify = bpy.props.BoolProperty(name="modify", default=False, description="Modify point cloud vertices at load time")
